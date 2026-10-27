@@ -985,7 +985,7 @@ impl<T, E: Decoder<T>> Decoder<Option<Vec<T>>> for Array<E> {
         match Int32.decode(buf)? {
             -1 => Ok(None),
             n if n >= 0 => {
-                let mut result = Vec::with_capacity(n as usize);
+                let mut result = Vec::with_capacity((n as usize).min(buf.remaining()));
                 for _ in 0..n {
                     result.push(self.0.decode(buf)?);
                 }
@@ -1093,7 +1093,7 @@ impl<T, E: Decoder<T>> Decoder<Option<Vec<T>>> for CompactArray<E> {
         match UnsignedVarInt.decode(buf)? {
             0 => Ok(None),
             n => {
-                let mut result = Vec::with_capacity((n - 1) as usize);
+                let mut result = Vec::with_capacity(((n - 1) as usize).min(buf.remaining()));
                 for _ in 1..n {
                     result.push(self.0.decode(buf)?);
                 }
@@ -1194,5 +1194,16 @@ mod tests {
     fn smoke_compact_bytes_encoder_decoder() {
         test_encoder_decoder(CompactBytes, vec![1, 2, 3, 4], &[5, 1, 2, 3, 4]);
         test_encoder_decoder(CompactBytes, None::<Vec<u8>>, &[0]);
+    }
+
+    #[test]
+    fn array_lengths_beyond_the_buffer_fail_without_reserving_them() {
+        let mut array: &[u8] = &[127, 255, 255, 255, 0, 0, 0, 1];
+        let decoded: Result<Option<Vec<i32>>> = Array(Int32).decode(&mut array);
+        assert!(decoded.is_err());
+
+        let mut compact: &[u8] = &[255, 255, 255, 255, 7, 0, 0, 0, 1];
+        let decoded: Result<Option<Vec<i32>>> = CompactArray(Int32).decode(&mut compact);
+        assert!(decoded.is_err());
     }
 }
